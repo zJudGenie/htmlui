@@ -142,23 +142,22 @@ class SnapshotCreateInternal extends Component {
     }
 
     try {
+      const policy = pe.getAndValidatePolicy();
+      const path = this.state.resolvedSource.path;
+
       this.setState({ isSaving: true });
+      if (this.props.navigate) {
+        this.props.navigate("/snapshots");
+      }
+
       axios
         .post("/api/v1/sources", {
-          path: this.state.resolvedSource.path,
+          path,
           createSnapshot: true,
-          policy: pe.getAndValidatePolicy(),
-        })
-        .then((_result) => {
-          this.props.navigate("/snapshots");
+          policy,
         })
         .catch((error) => {
           errorAlert(error);
-
-          this.setState({
-            error,
-            isSaving: false,
-          });
         });
     } catch (e) {
       this.setState({ isSaving: false });
