@@ -203,13 +203,7 @@ class SnapshotCreateInternal extends Component {
             >
               {this.state.isSaving ? (
                 <>
-                  <Spinner
-                    as="span"
-                    animation="border"
-                    size="sm"
-                    role="status"
-                    aria-hidden="true"
-                  />
+                  <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" />
                   &nbsp;Starting Snapshot...
                 </>
               ) : (
