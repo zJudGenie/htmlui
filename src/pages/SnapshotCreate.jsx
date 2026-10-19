@@ -4,6 +4,7 @@ import Button from "react-bootstrap/Button";
 import Col from "react-bootstrap/Col";
 import Form from "react-bootstrap/Form";
 import Row from "react-bootstrap/Row";
+import Spinner from "react-bootstrap/Spinner";
 import { useNavigate, useLocation } from "react-router";
 import { handleChange } from "../forms";
 import { PolicyEditor } from "../components/policy-editor/PolicyEditor";
@@ -24,6 +25,7 @@ class SnapshotCreateInternal extends Component {
       lastEstimatedPath: "",
       policyEditorVisibleFor: "n/a",
       localUsername: null,
+      isSaving: false,
     };
 
     this.policyEditorRef = React.createRef();
@@ -81,7 +83,7 @@ class SnapshotCreateInternal extends Component {
   componentDidUpdate() {
     this.maybeResolveCurrentPath(this.state.lastResolvedPath);
 
-    if (this.state.estimateTaskVisible && this.state.lastEstimatedPath !== this.state.resolvedSource.path) {
+    if (this.state.estimateTaskVisible && this.state.lastEstimatedPath !== this.state.resolvedSource?.path) {
       this.setState({
         estimateTaskVisible: false,
       });
@@ -91,7 +93,7 @@ class SnapshotCreateInternal extends Component {
   estimate(e) {
     e.preventDefault();
 
-    if (!this.state.resolvedSource.path) {
+    if (!this.state.resolvedSource?.path) {
       return;
     }
 
@@ -129,7 +131,7 @@ class SnapshotCreateInternal extends Component {
   snapshotNow(e) {
     e.preventDefault();
 
-    if (!this.state.resolvedSource.path) {
+    if (!this.state.resolvedSource?.path) {
       alert("Must specify directory to snapshot.");
       return;
     }
@@ -140,24 +142,37 @@ class SnapshotCreateInternal extends Component {
     }
 
     try {
+      const policy = pe.getAndValidatePolicy();
+      const path = this.state.resolvedSource.path;
+
+      this.setState({ isSaving: true });
+      try {
+        sessionStorage.setItem("kopia_pending_source", path);
+      } catch {
+        // ignore if storage is unavailable
+      }
+
+      if (this.props.navigate) {
+        this.props.navigate("/snapshots");
+      }
+
       axios
         .post("/api/v1/sources", {
-          path: this.state.resolvedSource.path,
+          path,
           createSnapshot: true,
-          policy: pe.getAndValidatePolicy(),
-        })
-        .then((_result) => {
-          this.props.navigate(-1);
+          policy,
         })
         .catch((error) => {
+          try {
+            sessionStorage.removeItem("kopia_pending_source");
+          } catch {
+            // ignore
+          }
+          window.dispatchEvent(new CustomEvent("kopia_pending_source_cleared"));
           errorAlert(error);
-
-          this.setState({
-            error,
-            isLoading: false,
-          });
         });
     } catch (e) {
+      this.setState({ isSaving: false });
       errorAlert(e);
     }
   }
@@ -182,7 +197,7 @@ class SnapshotCreateInternal extends Component {
             <Button
               data-testid="estimate-now"
               size="sm"
-              disabled={!this.state.resolvedSource?.path}
+              disabled={!this.state.resolvedSource?.path || this.state.isSaving}
               title="Estimate"
               variant="secondary"
               onClick={this.estimate}
@@ -192,12 +207,19 @@ class SnapshotCreateInternal extends Component {
             <Button
               data-testid="snapshot-now"
               size="sm"
-              disabled={!this.state.resolvedSource?.path}
+              disabled={!this.state.resolvedSource?.path || this.state.isSaving}
               title="Snapshot Now"
               variant="primary"
               onClick={this.snapshotNow}
             >
-              Snapshot Now
+              {this.state.isSaving ? (
+                <>
+                  <Spinner as="span" animation="border" size="sm" role="status" aria-hidden="true" />
+                  &nbsp;Starting Snapshot...
+                </>
+              ) : (
+                "Snapshot Now"
+              )}
             </Button>
           </Col>
         </Row>
