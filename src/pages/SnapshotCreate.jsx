@@ -146,6 +146,12 @@ class SnapshotCreateInternal extends Component {
       const path = this.state.resolvedSource.path;
 
       this.setState({ isSaving: true });
+      try {
+        sessionStorage.setItem("kopia_pending_source", path);
+      } catch {
+        // ignore if storage is unavailable
+      }
+
       if (this.props.navigate) {
         this.props.navigate("/snapshots");
       }
@@ -157,6 +163,12 @@ class SnapshotCreateInternal extends Component {
           policy,
         })
         .catch((error) => {
+          try {
+            sessionStorage.removeItem("kopia_pending_source");
+          } catch {
+            // ignore
+          }
+          window.dispatchEvent(new CustomEvent("kopia_pending_source_cleared"));
           errorAlert(error);
         });
     } catch (e) {

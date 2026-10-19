@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import axios from "axios";
 import moment from "moment";
 import React, { Component } from "react";
+import Alert from "react-bootstrap/Alert";
 import Badge from "react-bootstrap/Badge";
 import Button from "react-bootstrap/Button";
 import Col from "react-bootstrap/Col";
@@ -23,6 +24,14 @@ const allSnapshots = "All Snapshots";
 export class Snapshots extends Component {
   constructor() {
     super();
+
+    let pendingSource = null;
+    try {
+      pendingSource = sessionStorage.getItem("kopia_pending_source");
+    } catch {
+      // ignore
+    }
+
     this.state = {
       sources: [],
       isLoading: true,
@@ -34,6 +43,7 @@ export class Snapshots extends Component {
       multiUser: false,
       selectedOwner: null,
       selectedDirectory: "",
+      pendingSource,
     };
 
     this.sync = this.sync.bind(this);
@@ -41,6 +51,7 @@ export class Snapshots extends Component {
 
     this.cancelSnapshot = this.cancelSnapshot.bind(this);
     this.startSnapshot = this.startSnapshot.bind(this);
+    this.handlePendingSourceCleared = this.handlePendingSourceCleared.bind(this);
   }
 
   componentDidMount() {
@@ -50,12 +61,18 @@ export class Snapshots extends Component {
     this.setState({
       selectedOwner: defaultSnapshotViewAll ? allSnapshots : localSnapshots,
     });
+    window.addEventListener("kopia_pending_source_cleared", this.handlePendingSourceCleared);
     this.fetchSourcesWithoutSpinner();
     this.interval = window.setInterval(this.fetchSourcesWithoutSpinner, 3000);
   }
 
   componentWillUnmount() {
     window.clearInterval(this.interval);
+    window.removeEventListener("kopia_pending_source_cleared", this.handlePendingSourceCleared);
+  }
+
+  handlePendingSourceCleared() {
+    this.setState({ pendingSource: null });
   }
 
   fetchSourcesWithoutSpinner() {
@@ -66,10 +83,25 @@ export class Snapshots extends Component {
       axios
         .get("/api/v1/sources")
         .then((result) => {
+          let pendingSource = this.state.pendingSource;
+          if (
+            pendingSource &&
+            result.data.sources &&
+            result.data.sources.some((x) => x.source?.path === pendingSource)
+          ) {
+            try {
+              sessionStorage.removeItem("kopia_pending_source");
+            } catch {
+              // ignore
+            }
+            pendingSource = null;
+          }
+
           this.setState({
             localSourceName: result.data.localUsername + "@" + result.data.localHost,
             multiUser: result.data.multiUser,
             sources: result.data.sources,
+            pendingSource,
             isLoading: false,
             isFetching: false,
             isRefreshing: false,
@@ -179,6 +211,20 @@ export class Snapshots extends Component {
           </>
         );
 
+      case "INITIALIZING":
+        return (
+          <>
+            <Spinner
+              data-testid="snapshot-initializing"
+              animation="border"
+              variant="primary"
+              size="sm"
+              title="Initializing configuration on repository"
+            />
+            &nbsp;Initializing...
+          </>
+        );
+
       case "UPLOADING": {
         let u = x.row.original.upload;
         let title = "";
@@ -283,6 +329,22 @@ export class Snapshots extends Component {
     if (isLoading) {
       return <Spinner animation="border" variant="primary" />;
     }
+
+    sources = [...sources];
+    if (this.state.pendingSource && !sources.some((x) => x.source?.path === this.state.pendingSource)) {
+      const parts = (this.state.localSourceName || "").split("@");
+      const localUser = parts[0] || "";
+      const localHost = parts.slice(1).join("@") || "";
+      sources.unshift({
+        source: {
+          path: this.state.pendingSource,
+          userName: localUser,
+          host: localHost,
+        },
+        status: "INITIALIZING",
+      });
+    }
+
     let uniqueOwners = sources.reduce((a, d) => {
       const owner = formatOwnerName(d.source);
 
@@ -414,6 +476,16 @@ export class Snapshots extends Component {
             </Col>
           </Row>
         </div>
+
+        {this.state.pendingSource && (
+          <Alert variant="info" data-testid="pending-source-alert" className="d-flex align-items-center mb-3">
+            <Spinner animation="border" size="sm" className="me-2" />
+            <div>
+              Starting snapshot for <strong>{this.state.pendingSource}</strong>: initializing configuration on
+              repository... Progress will appear below shortly.
+            </div>
+          </Alert>
+        )}
 
         <KopiaTable data={sources} columns={columns} />
         <CLIEquivalent command={`snapshot list`} />

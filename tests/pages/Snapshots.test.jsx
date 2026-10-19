@@ -631,5 +631,22 @@ describe("Snapshots component", () => {
       // Should handle empty stats object gracefully
       unmount();
     });
+
+    test("displays initializing state for pending source and clears when loaded", async () => {
+      sessionStorage.setItem("kopia_pending_source", "/home/user/pending-folder");
+
+      axiosMock.onGet("/api/v1/sources").reply(200, mockSourcesResponse);
+
+      const { unmount } = renderSnapshots();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("pending-source-alert")).toBeInTheDocument();
+        expect(screen.getAllByText("/home/user/pending-folder")).toHaveLength(2);
+        expect(screen.getByTestId("snapshot-initializing")).toBeInTheDocument();
+      });
+
+      unmount();
+      sessionStorage.removeItem("kopia_pending_source");
+    });
   });
 });
